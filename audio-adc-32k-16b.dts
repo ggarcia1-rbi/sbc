@@ -1,0 +1,97 @@
+/dts-v1/;
+/plugin/;
+
+/ {
+    compatible = "raspberrypi,5-model-b";
+
+    fragment@0 {
+        target-path = "/";
+        __overlay__ {
+            pcm1865_mclk: pcm1865-mclk {
+                compatible = "fixed-clock";
+                #clock-cells = <0>;
+                /* Audio-ADC clock rate is 24.576MHz */
+                clock-frequency = <24576000>;
+            };
+        };
+    };
+
+    fragment@1 {
+        target = <&i2c1>;
+        __overlay__ {
+            #address-cells = <1>;
+            #size-cells = <0>;
+            status = "okay";
+
+            pcm1865: pcm1865@4a {
+                compatible = "ti,pcm1865";
+                reg = <0x4a>;
+                status = "okay";
+                avdd-supply = <&fixed_3v3>;
+                dvdd-supply = <&fixed_3v3>;
+                iovdd-supply = <&fixed_3v3>;
+                clocks = <&pcm1865_mclk>;
+                clock-names = "mclk";
+                #sound-dai-cells = <0>;
+            };
+        };
+    };
+
+    fragment@2 {
+        target = <&sound>;
+        __overlay__ {
+            compatible = "simple-audio-card";
+            /* Audio-ADC or AudioADC is how the device will be exposed to ALSA */
+            simple-audio-card,name = "Audio-ADC";
+            simple-audio-card,format = "i2s";
+            simple-audio-card,bitclock-master = <&codec_dai>;
+            simple-audio-card,frame-master = <&codec_dai>;
+            simple-audio-card,system-clock-fixed;
+            /* Divisor of 768 to achieve 32kHz sample rate */
+            simple-audio-card,mclk-fs = <768>;
+            simple-audio-card,capture-only;
+            /* Setup frame to 32 bits */
+            simple-audio-card,frame-bits = <32>;
+            /* Setup for 16-bit samples */
+            simple-audio-card,data-bits = <16>;
+            status = "okay";
+
+            cpu_dai: simple-audio-card,cpu {
+                sound-dai = <&i2s_clk_consumer>;  /* Updated here */
+                dai-format = "i2s";
+                /* In this configuration, we are letting the Pi be the clock consumer */
+                bitclock-slave;
+                frame-slave;
+            };
+
+            codec_dai: simple-audio-card,codec {
+                sound-dai = <&pcm1865>;
+                dai-format = "i2s";
+                /* Have the Audio ADC generate the bit and frame clocks */
+                bitclock-master;
+                frame-master;
+            };
+        };
+    };
+
+    /* Instead of targeting the old i2s node, now enable the clock consumer node */
+    fragment@3 {
+        target = <&i2s_clk_consumer>;
+        __overlay__ {
+            status = "okay";
+        };
+    };
+
+    fragment@4 {
+        target-path = "/";
+        __overlay__ {
+            fixed_3v3: fixed-regulator {
+                compatible = "regulator-fixed";
+                regulator-name = "3v3";
+                regulator-min-microvolt = <3300000>;
+                regulator-max-microvolt = <3300000>;
+                regulator-always-on;
+            };
+        };
+    };
+};
